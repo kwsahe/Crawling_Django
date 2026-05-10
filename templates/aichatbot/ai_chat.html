@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini AI 챗봇</title>
+    
+    <!-- TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <!-- Marked (마크다운 렌더링용) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Pretendard 폰트 (네이버 스타일) -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" />
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        naver: {
+                            green: '#03C75A',
+                            darkgreen: '#00B14F',
+                            lightgreen: '#E8F8EE',
+                            gray: '#F5F6F7',
+                            border: '#E5E5E5',
+                            text: '#222222',
+                            subtext: '#767676'
+                        }
+                    },
+                    fontFamily: {
+                        pretendard: ['Pretendard Variable', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, sans-serif; }
+        body { -webkit-font-smoothing: antialiased; }
+        
+        /* 스크롤바 커스텀 */
+        .chat-scroll::-webkit-scrollbar { width: 6px; }
+        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        .chat-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+        /* 메시지 페이드인 애니메이션 */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .msg-animate { animation: fadeInUp 0.3s ease-out; }
+
+        /* 타이핑 인디케이터 */
+        @keyframes bounce-dot {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+        .typing-dot { animation: bounce-dot 1.2s infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* 마크다운 콘텐츠 스타일 */
+        .markdown-content p { margin-bottom: 0.75rem; }
+        .markdown-content p:last-child { margin-bottom: 0; }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem;
+        }
+        .markdown-content h1 { font-size: 1.25rem; }
+        .markdown-content h2 { font-size: 1.125rem; }
+        .markdown-content h3 { font-size: 1rem; }
+        .markdown-content ul, .markdown-content ol { 
+            margin-left: 1.25rem; margin-bottom: 0.75rem; 
+        }
+        .markdown-content ul { list-style: disc; }
+        .markdown-content ol { list-style: decimal; }
+        .markdown-content li { margin-bottom: 0.25rem; }
+        .markdown-content code {
+            background: #f1f3f5; padding: 0.125rem 0.375rem;
+            border-radius: 4px; font-size: 0.875em;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .markdown-content pre {
+            background: #2d3748; color: #e2e8f0;
+            padding: 0.875rem; border-radius: 8px;
+            overflow-x: auto; margin: 0.5rem 0;
+        }
+        .markdown-content pre code {
+            background: transparent; color: inherit; padding: 0;
+        }
+        .markdown-content strong { font-weight: 700; }
+        .markdown-content a { color: #03C75A; text-decoration: underline; }
+
+        /* 사이드바 모바일 트랜지션 */
+        .sidebar-transition { transition: transform 0.3s ease-in-out; }
+        
+        /* 입력창 자동 리사이즈 */
+        textarea { resize: none; }
+    </style>
+</head>
+<body class="bg-naver-gray h-screen overflow-hidden">
+
+    <div class="flex h-screen">
+        
+        <!-- 사이드바 -->
+        <aside id="sidebar" class="sidebar-transition fixed lg:relative z-30 w-72 h-full bg-white border-r border-naver-border flex flex-col -translate-x-full lg:translate-x-0">
+            
+            <!-- 사이드바 헤더 -->
+            <div class="px-5 py-4 border-b border-naver-border">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 bg-naver-green rounded-lg flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">N</span>
+                        </div>
+                        <h1 class="font-bold text-lg text-naver-text">AI 챗봇</h1>
+                    </div>
+                    <button id="closeSidebar" class="lg:hidden text-naver-subtext hover:text-naver-text">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 새 채팅 버튼 -->
+            <div class="p-4">
+                <button id="newChatBtn" class="w-full bg-naver-green hover:bg-naver-darkgreen text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    새 대화 시작
+                </button>
+            </div>
+
+            <!-- 대화 기록 -->
+            <div class="flex-1 overflow-y-auto chat-scroll px-3">
+                <div class="px-2 py-1 mb-2">
+                    <span class="text-xs font-semibold text-naver-subtext">최근 대화</span>
+                </div>
+                <ul id="chatHistory" class="space-y-1">
+                    <!-- 동적으로 채워집니다 -->
+                </ul>
+            </div>
+
+            <!-- 사이드바 하단 - 설정 -->
+            <div class="p-4 border-t border-naver-border space-y-2">
+                <button id="settingsBtn" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-naver-gray transition-colors flex items-center gap-3">
+                    <svg class="w-5 h-5 text-naver-subtext" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span class="text-sm text-naver-text">API 키 설정</span>
+                </button>
+                <button id="clearAllBtn" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-3">
+                    <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    <span class="text-sm text-red-500">전체 대화 삭제</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 모바일 사이드바 오버레이 -->
+        <div id="sidebarOverlay" class="fixed inset-0 bg-black/40 z-20 hidden lg:hidden"></div>
+
+        <!-- 메인 콘텐츠 -->
+        <main class="flex-1 flex flex-col h-full bg-white">
+            
+            <!-- 상단 헤더 -->
+            <header class="border-b border-naver-border px-4 lg:px-6 py-3 flex items-center justify-between bg-white">
+                <div class="flex items-center gap-3">
+                    <button id="openSidebar" class="lg:hidden text-naver-text">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <div class="w-9 h-9 bg-gradient-to-br from-naver-green to-naver-darkgreen rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="font-bold text-naver-text">Gemini 2.5 Flash</h2>
+                            <p class="text-xs text-naver-subtext">Google AI 모델</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="apiStatusBadge" class="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-naver-lightgreen text-naver-darkgreen">
+                        <span class="w-2 h-2 bg-naver-green rounded-full"></span>
+                        <span id="apiStatusText">연결됨</span>
+                    </span>
+                </div>
+            </header>
+
+            <!-- 채팅 영역 -->
+            <div id="chatContainer" class="flex-1 overflow-y-auto chat-scroll">
+                <div id="chatMessages" class="max-w-4xl mx-auto px-4 lg:px-6 py-6 space-y-6">
+                    
+                    <!-- 환영 화면 -->
+                    <div id="welcomeScreen" class="text-center py-12">
+                        <div class="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-naver-green to-naver-darkgreen rounded-2xl flex items-center justify-center shadow-lg">
+                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0:0117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-2xl lg:text-3xl font-bold text-naver-text mb-3">
+                            안녕하세요! 무엇을 도와드릴까요?
+                        </h1>
+                        <p class="text-naver-subtext mb-8">Gemini AI에게 자유롭게 질문해보세요.</p>
+                        
+                        <!-- 추천 질문 카드 -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
+                            <button class="suggestion-card text-left p-4 border border-naver-border rounded-xl hover:border-naver-green hover:bg-naver-lightgreen transition-all" data-prompt="생성형 AI에 대해 알려줘">
+                                <div class="text-2xl mb-2">🤖</div>
+                                <div class="font-semibold text-naver-text text-sm mb-1">생성형 AI 알아보기</div>
+                                <div class="text-xs text-naver-subtext">생성형 AI의 개념과 활용법을 설명해드립니다</div>
+                            </button>
+                            <button class="suggestion-card text-left p-4 border border-naver-border rounded-xl hover:border-naver-green hover:bg-naver-lightgreen transition-all" data-prompt="파이썬으로 간단한 웹 크롤러 만드는 법">
+                                <div class="text-2xl mb-2">💻</div>
+                                <div class="font-semibold text-naver-text text-sm mb-1">코딩 도움받기</div>
+                                <div class="text-xs text-naver-subtext">프로그래밍 관련 질문을 해보세요</div>
+                            </button>
+                            <button class="suggestion-card text-left p-4 border border-naver-border rounded-xl hover:border-naver-green hover:bg-naver-lightgreen transition-all" data-prompt="오늘 점심 메뉴 추천해줘">
+                                <div class="text-2xl mb-2">🍽️</div>
+                                <div class="font-semibold text-naver-text text-sm mb-1">아이디어 추천</div>
+                                <div class="text-xs text-naver-subtext">일상의 다양한 추천을 받아보세요</div>
+                            </button>
+                            <button class="suggestion-card text-left p-4 border border-naver-border rounded-xl hover:border-naver-green hover:bg-naver-lightgreen transition-all" data-prompt="이메일 작성을 도와줘. 회의 일정 변경 요청 메일이야">
+                                <div class="text-2xl mb-2">✍️</div>
+                                <div class="font-semibold text-naver-text text-sm mb-1">글쓰기 도움</div>
+                                <div class="text-xs text-naver-subtext">이메일, 문서 작성을 도와드립니다</div>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- 입력 영역 -->
+            <div class="border-t border-naver-border bg-white px-4 lg:px-6 py-4">
+                <div class="max-w-4xl mx-auto">
+                    <div class="relative flex items-end gap-2 bg-naver-gray rounded-2xl border border-naver-border focus-within:border-naver-green transition-colors p-2">
+                        <textarea 
+                            id="messageInput" 
+                            rows="1"
+                            placeholder="메시지를 입력하세요... (Shift+Enter로 줄바꿈)"
+                            class="flex-1 bg-transparent border-0 outline-none px-3 py-2 text-naver-text placeholder-naver-subtext resize-none max-h-40"
+                        ></textarea>
+                        <button 
+                            id="sendBtn"
+                            class="bg-naver-green hover:bg-naver-darkgreen disabled:bg-gray-300 disabled:cursor-not-allowed text-white p-2.5 rounded-xl transition-colors flex-shrink-0"
+                            disabled
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-xs text-naver-subtext text-center mt-2">
+                        Gemini는 실수할 수 있습니다. 중요한 정보는 다시 확인하세요.
+                    </p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ====== 상태 관리 ======
+        const state = {
+            apiKey: localStorage.getItem('gemini_api_key') || '',
+            chats: JSON.parse(localStorage.getItem('gemini_chats') || '[]'),
+            currentChatId: null,
+            isLoading: false
+        };
+
+        // ====== DOM 요소 ======
+        const elements = {
+            sidebar: document.getElementById('sidebar'),
+            sidebarOverlay: document.getElementById('sidebarOverlay'),
+            openSidebar: document.getElementById('openSidebar'),
+            closeSidebar: document.getElementById('closeSidebar'),
+            newChatBtn: document.getElementById('newChatBtn'),
+            settingsBtn: document.getElementById('settingsBtn'),
+            clearAllBtn: document.getElementById('clearAllBtn'),
+            chatHistory: document.getElementById('chatHistory'),
+            chatContainer: document.getElementById('chatContainer'),
+            chatMessages: document.getElementById('chatMessages'),
+            welcomeScreen: document.getElementById('welcomeScreen'),
+            messageInput: document.getElementById('messageInput'),
+            sendBtn: document.getElementById('sendBtn'),
+            apiStatusBadge: document.getElementById('apiStatusBadge'),
+            apiStatusText: document.getElementById('apiStatusText')
+        };
+
+        // ====== 초기화 ======
+        function init() {
+            renderChatHistory();
+            updateApiStatus();
+            bindEvents();
+            
+            if (!state.apiKey) {
+                setTimeout(showApiKeyDialog, 500);
+            }
+        }
+
+        // ====== API 키 상태 표시 ======
+        function updateApiStatus() {
+            if (state.apiKey) {
+                elements.apiStatusBadge.classList.remove('bg-red-50', 'text-red-600');
+                elements.apiStatusBadge.classList.add('bg-naver-lightgreen', 'text-naver-darkgreen');
+                elements.apiStatusBadge.querySelector('span').classList.remove('bg-red-500');
+                elements.apiStatusBadge.querySelector('span').classList.add('bg-naver-green');
+                elements.apiStatusText.textContent = '연결됨';
+            } else {
+                elements.apiStatusBadge.classList.remove('bg-naver-lightgreen', 'text-naver-darkgreen');
+                elements.apiStatusBadge.classList.add('bg-red-50', 'text-red-600');
+                elements.apiStatusBadge.querySelector('span').classList.remove('bg-naver-green');
+                elements.apiStatusBadge.querySelector('span').classList.add('bg-red-500');
+                elements.apiStatusText.textContent = 'API 키 필요';
+            }
+        }
+
+        // ====== API 키 설정 다이얼로그 ======
+        async function showApiKeyDialog() {
+            const { value: apiKey } = await Swal.fire({
+                title: 'Gemini API 키 설정',
+                html: `
+                    <div class="text-left">
+                        <p class="text-sm text-gray-600 mb-3">
+                            Gemini API를 사용하려면 API 키가 필요합니다.
+                        </p>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" 
+                           class="text-sm text-naver-green hover:underline mb-3 inline-block">
+                            👉 Google AI Studio에서 API 키 발급받기
+                        </a>
+                    </div>
+                `,
+                input: 'password',
+                inputValue: state.apiKey,
+                inputPlaceholder: 'AIza...로 시작하는 API 키를 입력하세요',
+                showCancelButton: true,
+                confirmButtonText: '저장',
+                cancelButtonText: '취소',
+                confirmButtonColor: '#03C75A',
+                inputValidator: (value) => {
+                    if (!value) return 'API 키를 입력해주세요';
+                    if (!value.startsWith('AIza')) return '올바른 형식의 API 키가 아닙니다';
+                }
+            });
+
+            if (apiKey) {
+                state.apiKey = apiKey;
+                localStorage.setItem('gemini_api_key', apiKey);
+                updateApiStatus();
+                Swal.fire({
+                    icon: 'success',
+                    title: '저장 완료',
+                    text: 'API 키가 저장되었습니다.',
+                    confirmButtonColor: '#03C75A',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+            }
+        }
+
+        // ====== 채팅 기록 렌더링 ======
+        function renderChatHistory() {
+            elements.chatHistory.innerHTML = '';
+            
+            if (state.chats.length === 0) {
+                elements.chatHistory.innerHTML = `
+                    <li class="text-xs text-naver-subtext px-3 py-2">대화 기록이 없습니다</li>
+                `;
+                return;
+            }
+
+            state.chats.forEach(chat => {
+                const li = document.createElement('li');
+                const isActive = chat.id === state.currentChatId;
+                li.innerHTML = `
+                    <button class="chat-item w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-center justify-between group ${isActive ? 'bg-naver-lightgreen' : 'hover:bg-naver-gray'}" data-chat-id="${chat.id}">
+                        <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                            <svg class="w-4 h-4 flex-shrink-0 ${isActive ? 'text-naver-green' : 'text-naver-subtext'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                            </svg>
+                            <span class="truncate text-sm ${isActive ? 'text-naver-darkgreen font-medium' : 'text-naver-text'}">${escapeHtml(chat.title)}</span>
+                        </div>
+                        <button class="delete-chat-btn opacity-0 group-hover:opacity-100 text-naver-subtext hover:text-red-500 flex-shrink-0 ml-2" data-chat-id="${chat.id}">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                        </button>
+                    </button>
+                `;
+                elements.chatHistory.appendChild(li);
+            });
+        }
+
+        // ====== 메시지 렌더링 ======
+        function renderMessages() {
+            const chat = state.chats.find(c => c.id === state.currentChatId);
+            
+            if (!chat || chat.messages.length === 0) {
+                elements.welcomeScreen.style.display = 'block';
+                // welcomeScreen 외 모든 메시지 제거
+                Array.from(elements.chatMessages.children).forEach(el => {
+                    if (el.id !== 'welcomeScreen') el.remove();
+                });
+                return;
+            }
+
+            elements.welcomeScreen.style.display = 'none';
+            Array.from(elements.chatMessages.children).forEach(el => {
+                if (el.id !== 'welcomeScreen') el.remove();
+            });
+
+            chat.messages.forEach(msg => {
+                appendMessageElement(msg.role, msg.content, false);
+            });
+            scrollToBottom();
+        }
+
+        // ====== 메시지 요소 추가 ======
+        function appendMessageElement(role, content, animate = true) {
+            const div = document.createElement('div');
+            div.className = `flex gap-3 ${animate ? 'msg-animate' : ''} ${role === 'user' ? 'flex-row-reverse' : ''}`;
+            
+            const isUser = role === 'user';
+            const avatar = isUser 
+                ? `<div class="w-8 h-8 bg-naver-green rounded-full flex items-center justify-center flex-shrink-0">
+                     <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                       <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                     </svg>
+                   </div>`
+                : `<div class="w-8 h-8 bg-gradient-to-br from-naver-green to-naver-darkgreen rounded-full flex items-center justify-center flex-shrink-0">
+                     <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                     </svg>
+                   </div>`;
+
+            const bubbleClass = isUser
+                ? 'bg-naver-green text-white rounded-2xl rounded-tr-sm'
+                : 'bg-naver-gray text-naver-text rounded-2xl rounded-tl-sm';
+
+            const renderedContent = isUser 
+                ? escapeHtml(content).replace(/\n/g, '<br>')
+                : marked.parse(content);
+
+            div.innerHTML = `
+                ${avatar}
+                <div class="flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[75%]">
+                    <div class="px-4 py-3 ${bubbleClass}">
+                        <div class="markdown-content text-sm leading-relaxed">${renderedContent}</div>
+                    </div>
+                    <span class="text-xs text-naver-subtext mt-1 px-1">${isUser ? '나' : 'Gemini'}</span>
+                </div>
+            `;
+            elements.chatMessages.appendChild(div);
+            return div;
+        }
+
+        // ====== 타이핑 인디케이터 ======
+        function appendTypingIndicator() {
+            const div = document.createElement('div');
+            div.id = 'typingIndicator';
+            div.className = 'flex gap-3 msg-animate';
+            div.innerHTML = `
+                <div class="w-8 h-8 bg-gradient-to-br from-naver-green to-naver-darkgreen rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                    </svg>
+                </div>
+                <div class="bg-naver-gray rounded-2xl rounded-tl-sm px-5 py-4 flex items-center gap-1.5">
+                    <span class="typing-dot w-2 h-2 bg-naver-subtext rounded-full inline-block"></span>
+                    <span class="typing-dot w-2 h-2 bg-naver-subtext rounded-full inline-block"></span>
+                    <span class="typing-dot w-2 h-2 bg-naver-subtext rounded-full inline-block"></span>
+                </div>
+            `;
+            elements.chatMessages.appendChild(div);
+            scrollToBottom();
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        // ====== Gemini API 호출 (axios 사용) ======
+        async function callGeminiAPI(messages) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${state.apiKey}`;
+            
+            // Gemini API 형식으로 변환
+            const contents = messages.map(msg => ({
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: msg.content }]
+            }));
+
+            const response = await axios.post(url, {
+                contents: contents
+            }, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error('응답을 받지 못했습니다');
+            return text;
+        }
+
+        // ====== 메시지 전송 ======
+        async function sendMessage() {
+            const text = elements.messageInput.value.trim();
+            if (!text || state.isLoading) return;
+
+            if (!state.apiKey) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'API 키가 없습니다',
+                    text: '먼저 Gemini API 키를 설정해주세요.',
+                    confirmButtonColor: '#03C75A',
+                    confirmButtonText: '설정하기'
+                }).then(() => showApiKeyDialog());
+                return;
+            }
+
+            // 새 채팅이면 생성
+            if (!state.currentChatId) {
+                createNewChat(text);
+            }
+
+            const chat = state.chats.find(c => c.id === state.currentChatId);
+            
+            // 사용자 메시지 추가
+            chat.messages.push({ role: 'user', content: text });
+            
+            // 첫 메시지면 제목 업데이트
+            if (chat.messages.length === 1) {
+                chat.title = text.length > 30 ? text.substring(0, 30) + '...' : text;
+                renderChatHistory();
+            }
+
+            saveChats();
+            elements.welcomeScreen.style.display = 'none';
+            appendMessageElement('user', text);
+            
+            // 입력창 초기화
+            elements.messageInput.value = '';
+            adjustTextareaHeight();
+            updateSendButton();
+            
+            // 로딩 시작
+            state.isLoading = true;
+            updateSendButton();
+            appendTypingIndicator();
+            scrollToBottom();
+
+            try {
+                const response = await callGeminiAPI(chat.messages);
+                removeTypingIndicator();
+                
+                // AI 응답 추가
+                chat.messages.push({ role: 'assistant', content: response });
+                saveChats();
+                appendMessageElement('assistant', response);
+                scrollToBottom();
+            } catch (error) {
+                removeTypingIndicator();
+                console.error('API 오류:', error);
+                
+                let errorMsg = '알 수 없는 오류가 발생했습니다.';
+                if (error.response?.data?.error?.message) {
+                    errorMsg = error.response.data.error.message;
+                } else if (error.message) {
+                    errorMsg = error.message;
+                }
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'API 호출 실패',
+                    text: errorMsg,
+                    confirmButtonColor: '#03C75A'
+                });
+
+                // 실패한 사용자 메시지 롤백
+                chat.messages.pop();
+                saveChats();
+            } finally {
+                state.isLoading = false;
+                updateSendButton();
+            }
+        }
+
+        // ====== 새 채팅 생성 ======
+        function createNewChat(initialTitle = '새 대화') {
+            const newChat = {
+                id: 'chat_' + Date.now(),
+                title: initialTitle,
+                messages: [],
+                createdAt: Date.now()
+            };
+            state.chats.unshift(newChat);
+            state.currentChatId = newChat.id;
+            saveChats();
+            renderChatHistory();
+            return newChat;
+        }
+
+        // ====== 채팅 선택 ======
+        function selectChat(chatId) {
+            state.currentChatId = chatId;
+            renderChatHistory();
+            renderMessages();
+            // 모바일에서 사이드바 닫기
+            if (window.innerWidth < 1024) closeSidebar();
+        }
+
+        // ====== 채팅 삭제 ======
+        async function deleteChat(chatId) {
+            const result = await Swal.fire({
+                title: '대화를 삭제하시겠습니까?',
+                text: '삭제된 대화는 복구할 수 없습니다.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#9ca3af',
+                confirmButtonText: '삭제',
+                cancelButtonText: '취소'
+            });
+
+            if (result.isConfirmed) {
+                state.chats = state.chats.filter(c => c.id !== chatId);
+                if (state.currentChatId === chatId) {
+                    state.currentChatId = null;
+                }
+                saveChats();
+                renderChatHistory();
+                renderMessages();
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: '삭제 완료',
+                    confirmButtonColor: '#03C75A',
+                    timer: 1200,
+                    showConfirmButton: false
+                });
+            }
+        }
+
+        // ====== 전체 삭제 ======
+        async function clearAllChats() {
+            const result = await Swal.fire({
+                title: '모든 대화를 삭제하시겠습니까?',
+                text: '모든 대화 기록이 영구적으로 삭제됩니다.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#9ca3af',
+                confirmButtonText: '전체 삭제',
+                cancelButtonText: '취소'
+            });
+
+            if (result.isConfirmed) {
+                state.chats = [];
+                state.currentChatId = null;
+                saveChats();
+                renderChatHistory();
+                renderMessages();
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: '전체 삭제 완료',
+                    confirmButtonColor: '#03C75A',
+                    timer: 1200,
+                    showConfirmButton: false
+                });
+            }
+        }
+
+        // ====== 사이드바 제어 ======
+        function openSidebar() {
+            elements.sidebar.classList.remove('-translate-x-full');
+            elements.sidebarOverlay.classList.remove('hidden');
+        }
+
+        function closeSidebar() {
+            elements.sidebar.classList.add('-translate-x-full');
+            elements.sidebarOverlay.classList.add('hidden');
+        }
+
+        // ====== 유틸리티 ======
+        function saveChats() {
+            localStorage.setItem('gemini_chats', JSON.stringify(state.chats));
+        }
+
+        function scrollToBottom() {
+            requestAnimationFrame(() => {
+                elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+            });
+        }
+
+        function adjustTextareaHeight() {
+            const ta = elements.messageInput;
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+        }
+
+        function updateSendButton() {
+            const hasText = elements.messageInput.value.trim().length > 0;
+            elements.sendBtn.disabled = !hasText || state.isLoading;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ====== 이벤트 바인딩 ======
+        function bindEvents() {
+            // 입력창 이벤트
+            elements.messageInput.addEventListener('input', () => {
+                adjustTextareaHeight();
+                updateSendButton();
+            });
+
+            elements.messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // 전송 버튼
+            elements.sendBtn.addEventListener('click', sendMessage);
+
+            // 새 채팅
+            elements.newChatBtn.addEventListener('click', () => {
+                state.currentChatId = null;
+                renderChatHistory();
+                renderMessages();
+                elements.messageInput.focus();
+                if (window.innerWidth < 1024) closeSidebar();
+            });
+
+            // 사이드바
+            elements.openSidebar.addEventListener('click', openSidebar);
+            elements.closeSidebar.addEventListener('click', closeSidebar);
+            elements.sidebarOverlay.addEventListener('click', closeSidebar);
+
+            // 설정
+            elements.settingsBtn.addEventListener('click', showApiKeyDialog);
+
+            // 전체 삭제
+            elements.clearAllBtn.addEventListener('click', clearAllChats);
+
+            // 채팅 기록 클릭 (이벤트 위임)
+            elements.chatHistory.addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('.delete-chat-btn');
+                if (deleteBtn) {
+                    e.stopPropagation();
+                    deleteChat(deleteBtn.dataset.chatId);
+                    return;
+                }
+                const chatItem = e.target.closest('.chat-item');
+                if (chatItem) {
+                    selectChat(chatItem.dataset.chatId);
+                }
+            });
+
+            // 추천 질문 카드
+            document.querySelectorAll('.suggestion-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    elements.messageInput.value = card.dataset.prompt;
+                    adjustTextareaHeight();
+                    updateSendButton();
+                    elements.messageInput.focus();
+                });
+            });
+        }
+
+        // ====== 시작 ======
+        init();
+    </script>
+</body>
+</html>
