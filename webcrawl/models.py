@@ -3,6 +3,7 @@ from django.db import models
 
 class Movie(models.Model):
     title = models.CharField(max_length=255)
+    ko_title = models.CharField(max_length=255, default='', null=True)
     year = models.CharField(max_length=10)
     rated = models.CharField(max_length=20, blank=True, null=True)
     released = models.CharField(max_length=50, blank=True, null=True)

@@ -294,9 +294,9 @@
             <div class="card-title">{{data.Title}}</div>
             <div class="card-date">{{data.Year}}</div>
           </div>
-          <button class="btn-save" style="" onclick="saveMovie({&quot;id&quot;:&quot;tt0816692b&quot;,&quot;title&quot;:&quot;어벤져스: 엔드게임&quot;,&quot;year&quot;:&quot;2019&quot;,&quot;poster&quot;:&quot;https://m.media-amazon.com/images/M/MV5BMTc5MDE2ODcwNV5BMl5BanBnXkFtZTgwMzI2NzQ2NzM@._V1_SX300.jpg&quot;,&quot;date&quot;:&quot;4월 26, 2019&quot;}, this)">
+          <a href="http://127.0.0.1:8000/webcrawl/save_data/{{data.imdbID}}/" class="btn-save" style="">
             저장
-          </button>
+          </a>
         </div>
         
         {% endfor %}
