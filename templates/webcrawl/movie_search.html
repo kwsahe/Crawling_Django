@@ -286,7 +286,7 @@
           <p class="section-label">인기 영화</p>
           <div class="card-grid">
 
-        {% for data in Search %}
+        {% for data in qryData.Search %}
 
         <div class="movie-card">
           <div class="poster-wrap"><img src="{{data.Poster}}" alt="어벤져스: 엔드게임" onerror="this.parentElement.innerHTML=placeholderHTML()"></div>
