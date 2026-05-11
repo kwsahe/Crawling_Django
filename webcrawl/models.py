@@ -42,4 +42,4 @@ class Movie(models.Model):
         db_table = "movie"
 
     def __str__(self):
-        return f"{self.title} ({self.year})"
+        return f"{self.ko_title}({self.title}) ({self.year})"
